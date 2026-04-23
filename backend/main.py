@@ -3,6 +3,7 @@ from typing import List
 import logging
 from datetime import datetime
 import random
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,11 +44,77 @@ class ConnectionManager:
     Thread safety notes:
     - In production, use asyncio.Lock for thread-safe operations
     - For learning, simple list operations are fine
+    
+    =============================================================================
+    THREAD SAFETY EXPLANATION
+    =============================================================================
+    
+    In Python's asyncio, we use asyncio.Lock for thread-safe operations.
+    This becomes important when multiple coroutines might modify the
+    active_connections list simultaneously.
+    
+    Why is thread safety needed here?
+    ┌─────────────────────────────────────────────────────────────┐
+    │ SCENARIO: Two clients connect at almost the same time       │
+    │                                                             │
+    │ Client A ─────────► connect() ──────────► append to list    │
+    │ Client B ─────────► connect() ──────────► append to list    │
+    │                                                             │
+    │ Without Lock: Both might append simultaneously causing      │
+    │               race conditions or corrupted state            │
+    │                                                             │
+    │ With Lock: One waits for the other to finish,               │
+    │           ensuring consistent state                         │
+    └─────────────────────────────────────────────────────────────┘
+    
+    When is a Lock actually needed?
+    - When using async for broadcast that iterates while others add/remove
+    - When disconnect happens during broadcast
+    - In production with high concurrency
+    
+    For LEARNING: Simple list operations are fine because:
+    - Single-threaded event loop processes one coroutine at a time
+    - No actual parallelism (no threads) in asyncio
+    - Operations are atomic at the event loop level
+    
+    For PRODUCTION: Use asyncio.Lock like this:
+    
+    ```python
+    import asyncio
+    
+    class ConnectionManager:
+        def __init__(self):
+            self.active_connections: List[WebSocket] = []
+            self.lock = asyncio.Lock()  # Add this for production
+        
+        async def connect(self, websocket: WebSocket):
+            async with self.lock:  # Acquire lock before modifying
+                await websocket.accept()
+                self.active_connections.append(websocket)
+        
+        async def disconnect(self, websocket: WebSocket):
+            async with self.lock:
+                if websocket in self.active_connections:
+                    self.active_connections.remove(websocket)
+        
+        async def broadcast(self, message: str):
+            async with self.lock:  # Lock during iteration
+                for connection in self.active_connections:
+                    await connection.send_text(message)
+    ```
+    
+    In this learning example, we use the simple version (no lock)
+    because it's easier to understand and sufficient for learning.
     """
     
     def __init__(self):
         # List to store all active WebSocket connections
         self.active_connections: List[WebSocket] = []
+        
+        # =============================================================================
+        # PRODUCTION VERSION - Uncomment these lines for production use:
+        # =============================================================================
+        # self.lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket):
         """
@@ -55,16 +122,16 @@ class ConnectionManager:
         
         WebSocket handshake process:
         ┌─────────────────────────────────────────────────────────────┐
-        │ 1. Client initiates WebSocket upgrade request           │
-        │    (HTTP GET request with Upgrade header)                │
+        │ 1. Client initiates WebSocket upgrade request               │
+        │    (HTTP GET request with Upgrade header)                  │
         │                                                             │
         │ 2. Server accepts with websocket.accept()               │
-        │    - This sends 101 Switching Protocols response        │
-        │    - Upgrades connection from HTTP to WebSocket           │
+        │    - This sends 101 Switching Protocols response          │
+        │    - Upgrades connection from HTTP to WebSocket            │
         │                                                             │
-        │ 3. Connection established!                               │
+        │ 3. Connection established!                              │
         │    - Now full-duplex communication is possible           │
-        │    - Both sides can send messages anytime                 │
+        │    - Both sides can send messages anytime              │
         └─────────────────────────────────────────────────────────────┘
         
         Args:
@@ -79,6 +146,7 @@ class ConnectionManager:
         await websocket.accept()
         
         # Add to our list of active connections
+        # For production, wrap with: async with self.lock:
         self.active_connections.append(websocket)
         logger.info(f"Client connected. Total connections: {len(self.active_connections)}")
 
@@ -136,13 +204,14 @@ class ConnectionManager:
         - If one fails, continue with others
         
         ┌─────────────────────────────────────────────────────────────┐
-        │ Example: Broadcasting a message                          │
+        │ Example: Broadcasting a message                             │
         │                                                             │
-        │ Client A ──message──► Server ──broadcast──► Client B     │
+        │ Client A ──message──► Server ──broadcast──► Client B       │
         │                              │              ──broadcast──► Client C
         │                              │              ──broadcast──► Client D
         └─────────────────────────────────────────────────────────────┘
         """
+        # For production, wrap with: async with self.lock:
         for connection in self.active_connections:
             await connection.send_text(message)
 
@@ -185,18 +254,18 @@ async def websocket_endpoint(websocket: WebSocket):
     
     Connection lifecycle:
     ┌─────────────────────────────────────────────────────────────┐
-    │ 1. CONNECT: Client calls new WebSocket(url)                 │
-    │            Client sends HTTP GET with Upgrade header        │
-    │                                                             │
+    │ 1. CONNECT: Client calls new WebSocket(url)                  │
+    │            Client sends HTTP GET with Upgrade header       │
+    ���                                                             │
     │ 2. HANDSHAKE: Server calls websocket.accept()               │
-    │              Connection upgraded to WebSocket               │
+    │              Connection upgraded to WebSocket             │
     │                                                             │
-    │ 3. COMMUNICATE: Loop receiving and sending messages         │
-    │              - receive_text(): Wait for client message      │
-    │              - send_text(): Send message to client          │
+    │ 3. COMMUNICATE: Loop receiving and sending messages        │
+    │              - receive_text(): Wait for client message     │
+    │              - send_text(): Send message to client       │
     │                                                             │
-    │ 4. DISCONNECT: Exception raised (WebSocketDisconnect)       │
-    │              Client closed browser/tab or connection        │
+    │ 4. DISCONNECT: Exception raised (WebSocketDisconnect)    │
+    │              Client closed browser/tab or connection       │
     └─────────────────────────────────────────────────────────────┘
     
     WebSocket object methods:
