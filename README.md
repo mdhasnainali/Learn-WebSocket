@@ -1,86 +1,130 @@
 # WebSocket Learning Application
 
-A simple FastAPI application to learn WebSocket communication with an interactive test client.
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install fastapi uvicorn
-
-# Run the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Then open:
-- **Test Client:** http://localhost:8000
-- **Docs:** http://localhost:8000/docs
-- **API Docs:** http://localhost:8000/docs (FastAPI auto-generated)
+A comprehensive WebSocket learning solution split into two Docker containers with detailed documentation for learning how WebSocket communication works.
 
 ## Project Structure
 
 ```
-websocket/
-├── main.py      # FastAPI WebSocket server
-├── index.html   # Separate frontend test client
-└── README.md    # This file
+learn-websocket/
+├── backend/              # FastAPI WebSocket server
+│   ├── main.py          # Server with detailed inline docs
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── README.md       # Backend-specific docs
+│
+├── frontend/            # Static HTML client
+│   ├── index.html     # Interactive client with learning content
+│   ├── server.py     # Simple HTTP server
+│   ├── Dockerfile
+│   └── README.md     # Frontend-specific docs
+│
+├── docker-compose.yml   # Run both services
+└── README.md          # This file
 ```
 
-## What is WebSocket?
+## Quick Start
 
-WebSocket is a communication protocol providing **full-duplex** (two-way) communication over a single TCP connection.
+### Prerequisites
+- Docker
+- Docker Compose
 
-| Feature | WebSocket | HTTP |
-|---------|----------|------|
-| Connection | Persistent | Request-Response |
-| Server → Client | Yes (anytime) | No (must request) |
-| Real-time | Yes | No (polling needed) |
-| Overhead | Low | High (headers each request) |
-
-## WebSocket Endpoint
-
-```python
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        await websocket.send_text(f"Echo: {data}")
+### Run with Docker
+```bash
+cd learn-websocket/main
+docker-compose up --build
 ```
 
-## Key Methods
+### Access the Application
 
-| Method | Description |
-|-------|-------------|
-| `websocket.accept()` | Accept WebSocket upgrade |
-| `websocket.receive_text()` | Wait for incoming message |
-| `websocket.send_text()` | Send message to client |
-| `websocket.close()` | Close connection |
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:8080 | Interactive test client |
+| Backend | http://localhost:8000 | API info endpoint |
+| WebSocket | ws://localhost:8000/ws | WebSocket endpoint |
 
-## JavaScript Client
+## What You'll Learn
 
-```javascript
-const ws = new WebSocket('ws://localhost:8000/ws');
+### Backend (FastAPI)
+- WebSocket endpoint definition
+- Connection management patterns
+- Broadcasting vs personal messages
+- Message handling
+- Disconnection handling
 
-ws.onopen = () => console.log('Connected');
-ws.onmessage = (e) => console.log(e.data);
-ws.onclose = () => console.log('Disconnected');
+### Frontend (JavaScript)
+- WebSocket JavaScript API
+- Event handlers (onopen, onmessage, onclose, onerror)
+- Connection lifecycle
+- Reconnection patterns
+- Message sending/receiving
 
-ws.send('Hello!');
+### Key WebSocket Concepts
+- Full-duplex communication
+- Persistent connections
+- Server-push capability
+- Real-time messaging
+- Connection lifecycle
+
+## Architecture
+
 ```
+┌─────────────────────────────────────────────────────────────┐
+│                     Docker Network                          │
+│                                                             │
+│  ┌──────────────┐           ┌──────────────┐              │
+│  │  Frontend    │           │   Backend     │              │
+│  │  (Port 8080) │ ────────► │  (Port 8000) │              │
+│  │  Nginx       │           │  FastAPI      │              │
+│  │              │           │  /ws endpoint│              │
+│  └──────────────┘           └──────────────┘              │
+│                                                             │
+│  Browser ───────────────────────────► WebSocket Server     │
+│  http://localhost:8080              ws://localhost:8000/ws    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Testing WebSocket
+
+1. Open http://localhost:8080 in your browser
+2. Connection should auto-establish (status shows "Connected")
+3. Use quick action buttons to test commands
+4. Watch messages appear in real-time
+5. Open multiple browser tabs to see message flow
 
 ## Server Commands
 
-Send these messages to test:
+Send these from the frontend client:
 
-- `ping` → Returns "pong"
-- `get_time` → Returns server time
-- `get_random` → Returns random number
-- `Hello!` → Welcome message
-- Any other text → Echoes back
+| Command | Response |
+|---------|----------|
+| `ping` | "pong" |
+| `get_time` | Current server time |
+| `get_random` | Random number (1-100) |
+| `Hello!` | Welcome message |
+| `echo:test` | Echoes back |
 
-## Testing Tips
+## Documentation
 
-1. Open multiple browser tabs to see broadcasting
-2. Use browser DevTools (F12) to see WebSocket errors
-3. Check the `/docs` endpoint for detailed documentation
+- [Backend Documentation](backend/README.md) - FastAPI server details
+- [Frontend Documentation](frontend/README.md) - JavaScript client details
+
+## Stopping the Application
+
+```bash
+docker-compose down
+```
+
+## Development
+
+### Backend Only
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+```
+
+### Frontend Only (requires running backend)
+```bash
+cd frontend
+WS_URL=ws://localhost:8000/ws python server.py
+```

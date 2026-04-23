@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./backend
+    container_name: websocket-backend
+    ports:
+      - "8000:8000"
+    networks:
+      - websocket-network
+
+  frontend:
+    build: ./frontend
+    container_name: websocket-frontend
+    ports:
+      - "8080:80"
+    environment:
+      - WS_URL=ws://backend:8000/ws
+    depends_on:
+      - backend
+    networks:
+      - websocket-network
+
+networks:
+  websocket-network:
+    driver: bridge
